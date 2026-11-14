@@ -1245,7 +1245,11 @@ class DeepseekV32IndexerMetadataBuilder(AttentionMetadataBuilder):
                 # [10-3, 7-1, 12-4, 0-0] = [7, 6, 8, 0].
 
                 # 3 + 1 + 4 + 0 = 8
-                actual_expanded = int(decode_lens_cpu.sum().item())
+                # ``decode_lens`` comes from the device ``query_start_loc``, which
+                # adaptive verification may trim below the host plan (see
+                # ``supports_device_cpu_query_lens_mismatch``); the host copy is only
+                # a valid size when the two agree, so use the device total.
+                actual_expanded = int(decode_lens.sum().item())
 
                 # Fuse expanded_base and expanded_starts into a single
                 # repeat_interleave:
@@ -1327,7 +1331,9 @@ class DeepseekV32IndexerMetadataBuilder(AttentionMetadataBuilder):
         if use_native or max_decode_len <= 1:
             return global_seq_lens
 
-        actual_expanded = int(decode_lens_cpu.sum().item())
+        # Same as above: the repeats are device lengths, so the size must be the
+        # device total (``decode_lens_cpu`` may still hold the untrimmed plan).
+        actual_expanded = int(decode_lens.sum().item())
         if actual_expanded > 0:
             expanded_offsets = torch.repeat_interleave(
                 global_seq_lens - decode_lens - query_start_loc,
